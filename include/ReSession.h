@@ -1,5 +1,6 @@
 #include <iostream>
 #include <fstream>
+#include <sstream>
 #include <iomanip>
 #include <unordered_map>
 #include <vector>
@@ -65,7 +66,8 @@ typedef struct {
   uint64_t hash_code;
   bool psh_flag;
   std::streampos offset_beg;
-  std::streampos offset_end;
+  std::streampos pcap_offset_beg;
+  uint32_t pcap_len;
 } pack_struct;
 
 typedef struct {
@@ -78,11 +80,14 @@ typedef struct {
 class ReSession {
 public:
 
-  void analyze_pcap_file(std::string path);
+  void analyze_pcap_file(std::string path, std::string out_path);
 
 private:
   std::ifstream in;
   std::ofstream out;
+  std::string _path_prefix;
+
+  pcap_hdr_t _fileh;
 
   const uint32_t pcapfile_magic_number = 0xa1b2c3d4;
   const char http_methods[8][4] = { "GET", "HEA", "POS", "PUT", "DEL", "CON", "OPT", "TRA" };
@@ -91,13 +96,12 @@ private:
 
 
   void analyze_pcaprec();
-  void analyze_ether_pac();
-  void analyze_ip_pac();
+  void analyze_ether_pac(pack_struct& ph);
+  void analyze_ip_pac(pack_struct& ph);
   void analyze_tcp_pac(pack_struct& ph, int& tcp_header_len);
   void add_to_bucket(pack_struct& ph);
   void reassemble_seg();
   void print_pentuple(pack_struct& ph);
-
 
 
   template<typename T>
@@ -144,5 +148,15 @@ private:
       }
     }
     return false;
+  }
+  
+  inline std::string ip2str(uint32_t ip) {
+    std::stringstream ss;
+    ss << std::dec
+      << (ip & 0x000000ff) << "."
+      << (ip >> 8 & 0x000000ff) << "."
+      << (ip >> 16 & 0x000000ff) << "."
+      << (ip >> 24 & 0x000000ff);
+    return ss.str();
   }
 };

@@ -1,8 +1,8 @@
 #include "ReSession.h"
 //#define DEBUG
-#define RESULT_PRINT
+//#define RESULT_PRINT
 
-void ReSession::analyze_pcap_file(std::string path) {
+void ReSession::analyze_pcap_file(std::string path, std::string out_path) {
   in.open(path, std::ios::binary);
   out.open(path + ".txt");
   pcap_hdr_t fileh;
@@ -13,6 +13,8 @@ void ReSession::analyze_pcap_file(std::string path) {
 #endif // RESULT_PRINT
     return;
   }
+  _fileh = fileh;
+  _path_prefix = out_path;
 
   while (!in.eof()) {
     analyze_pcaprec();
@@ -32,13 +34,17 @@ void ReSession::analyze_pcaprec() {
   }
   std::streampos next = in.tellg() + static_cast<std::streampos>(pcaprec.incl_len);
 
-  analyze_ether_pac();
+  pack_struct ph;
+  ph.pcap_offset_beg = in.tellg() - static_cast<std::streampos>(sizeof(pcaprec));
+  ph.pcap_len = pcaprec.incl_len + sizeof(pcaprec);
+
+  analyze_ether_pac(ph);
 
   // Seek to next pcaprec
   in.seekg(next);
 }
 
-void ReSession::analyze_ether_pac() {
+void ReSession::analyze_ether_pac(pack_struct& ph) {
   ether_hdr_t etherh;
   in.read(any2char<ether_hdr_t*>(&etherh), sizeof(etherh));
 #ifdef DEBUG
@@ -49,10 +55,10 @@ void ReSession::analyze_ether_pac() {
     return;
   }
 
-  analyze_ip_pac();
+  analyze_ip_pac(ph);
 }
 
-void ReSession::analyze_ip_pac() {
+void ReSession::analyze_ip_pac(pack_struct& ph) {
   ip_hdr_t iph;
   in.read(any2char<ip_hdr_t*>(&iph), sizeof(iph));
 
@@ -65,7 +71,6 @@ void ReSession::analyze_ip_pac() {
     in.seekg(in.tellg() + static_cast<std::streampos>(r * 4));
   }
 
-  pack_struct ph;
   ph.ip_dest = iph.dest_ip;
   ph.ip_src = iph.src_ip;
 
@@ -78,7 +83,6 @@ void ReSession::analyze_ip_pac() {
 
   uint64_t data_len = iph.tot_len - ip_header_len - tcp_header_len;
   ph.offset_beg = in.tellg();
-  ph.offset_end = in.tellg() + static_cast<std::streampos>(data_len);
   ph.data_len = data_len;
 
   hash_packet(ph);
@@ -169,7 +173,27 @@ void ReSession::reassemble_seg() {
   for (auto it : tcp_bucket) {
     if (!it.second.empty() &&
       (it.second[0].port_dest == 80 || it.second[0].port_src == 80)) {
+      in.clear();
+
       print_pentuple(it.second[0]);
+
+      std::stringstream ss;
+      ss << _path_prefix;
+      if (it.second[0].ip_dest < it.second[0].ip_src) {
+        ss << "TCP[" << ip2str(it.second[0].ip_dest) << "]["
+          << it.second[0].port_dest << "]["
+          << ip2str(it.second[0].ip_src) << "]["
+          << it.second[0].port_src << "].pcap";
+      }
+      else {
+        ss << "TCP[" << ip2str(it.second[0].ip_src) << "]["
+          << it.second[0].port_src << "]["
+          << ip2str(it.second[0].ip_dest) << "]["
+          << it.second[0].port_dest << "].pcap";
+      }
+      std::ofstream pcap_out(ss.str(), std::ios::binary);
+      pcap_out.write(any2char<pcap_hdr_t*>(&_fileh), sizeof(_fileh));
+
       bool start = false;
       char http_h[4], data[2048];
       for (auto v : it.second) {
@@ -180,23 +204,25 @@ void ReSession::reassemble_seg() {
           start = check_http_h(http_h);
         }
         if (start) {
-          in.clear();
-          in.seekg(v.offset_beg);
-          int a = in.tellg();
-          in.read(data, v.data_len);
-          data[v.data_len] = 0;
+          //in.seekg(v.offset_beg);
+          in.seekg(v.pcap_offset_beg);
+          //in.read(data, v.data_len);
+          in.read(data, v.pcap_len);
 #ifdef RESULT_PRINT
+          data[v.data_len] = 0;
           std::cout << data;
 #endif // RESULT_PRINT
-          out << data;
+          out.write(data + (v.offset_beg - v.pcap_offset_beg), v.data_len);
+          pcap_out.write(data, v.pcap_len);
           if (v.psh_flag) {
 #ifdef RESULT_PRINT
             std::cout << std::endl << std::endl;
 #endif // RESULT_PRINT
-            out << std::endl << std::endl;
+            out << std::endl;
           }
         }
       }
+      pcap_out.close();
     }
   }
 }
@@ -219,16 +245,8 @@ void ReSession::print_pentuple(pack_struct& ph) {
 #endif // RESULT_PRINT
 
   out << std::endl << std::endl << "TCP ";
-  out << std::dec << "ip1:" 
-    << (ph.ip_dest & 0x000000ff) << "."
-    << (ph.ip_dest>>8 & 0x000000ff) << "."
-    << (ph.ip_dest>>16 & 0x000000ff) << "."
-    << (ph.ip_dest>>24 & 0x000000ff) << " ";
+  out << std::dec << "ip1:" << ip2str(ph.ip_dest) << " ";
   out << "port1:" << ph.port_dest << " ";
-  out << std::dec << "ip2:" 
-    << (ph.ip_src & 0x000000ff) << "."
-    << (ph.ip_src>>8 & 0x000000ff) << "."
-    << (ph.ip_src>>16 & 0x000000ff) << "."
-    << (ph.ip_src>>24 & 0x000000ff) << " ";
+  out << std::dec << "ip2:" << ip2str(ph.ip_src) << " ";
   out << "port2:" << ph.port_src << std::endl << std::endl;
 }
