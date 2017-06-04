@@ -80,7 +80,7 @@ typedef struct {
 class ReSession {
 public:
 
-  void analyze_pcap_file(std::string path, std::string out_path);
+  int analyze_pcap_file(std::string path, std::string out_path);
 
 private:
   std::ifstream in;
