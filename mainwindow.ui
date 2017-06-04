@@ -20,14 +20,14 @@
       <x>60</x>
       <y>40</y>
       <width>481</width>
-      <height>131</height>
+      <height>271</height>
      </rect>
     </property>
     <layout class="QGridLayout" name="gridLayout">
-     <item row="0" column="0">
-      <widget class="QLabel" name="label">
+     <item row="1" column="2">
+      <widget class="QPushButton" name="start">
        <property name="text">
-        <string>输入文件</string>
+        <string>开始</string>
        </property>
       </widget>
      </item>
@@ -38,18 +38,15 @@
        </property>
       </widget>
      </item>
-     <item row="1" column="2">
-      <widget class="QPushButton" name="start">
-       <property name="text">
-        <string>开始</string>
-       </property>
-      </widget>
-     </item>
      <item row="0" column="1">
       <widget class="QLineEdit" name="input_path"/>
      </item>
-     <item row="1" column="1">
-      <widget class="QLineEdit" name="output_path"/>
+     <item row="0" column="0">
+      <widget class="QLabel" name="label">
+       <property name="text">
+        <string>输入文件</string>
+       </property>
+      </widget>
      </item>
      <item row="0" column="2">
       <widget class="QPushButton" name="file_select">
@@ -64,6 +61,12 @@
         <string/>
        </property>
       </widget>
+     </item>
+     <item row="1" column="1">
+      <widget class="QLineEdit" name="output_path"/>
+     </item>
+     <item row="3" column="1">
+      <widget class="QTextBrowser" name="log"/>
      </item>
     </layout>
    </widget>

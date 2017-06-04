@@ -30,4 +30,15 @@ void MainWindow::handle_select_file() {
 
 void MainWindow::handle_reassemble() {
     int err = re.analyze_pcap_file(ui->input_path->text().toStdString(), ui->output_path->text().toStdString());
+    if (err == 1) {
+//        QString s = QStringLiteral("该文件不是正确的pcap文件");
+        QString s("该文件不是正确的pcap文件");
+        ui->tip->setText(s);
+        return;
+    }
+//    QString s = QStringLiteral("HTTP会话重组成功");
+    QString s("HTTP会话重组成功");
+    ui->tip->setText(s);
+    QString log = QString::fromStdString(re.get_sub_pcap());
+    ui->log->setText(log);
 }
