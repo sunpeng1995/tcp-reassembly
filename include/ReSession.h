@@ -81,11 +81,18 @@ class ReSession {
 public:
 
   int analyze_pcap_file(std::string path, std::string out_path);
+  std::string get_sub_pcap() {
+    std::string s = _sub_pcap_files.str();
+    _sub_pcap_files.str("");
+    return s;
+  }
 
 private:
   std::ifstream in;
   std::ofstream out;
   std::string _path_prefix;
+  
+  std::stringstream _sub_pcap_files;
 
   pcap_hdr_t _fileh;
 

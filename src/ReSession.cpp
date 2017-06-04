@@ -192,6 +192,9 @@ void ReSession::reassemble_seg() {
           << ip2str(it.second[0].ip_dest) << "]["
           << it.second[0].port_dest << "].pcap";
       }
+      // Log subfile to ui
+      _sub_pcap_files << ss.str() << std::endl;
+
       std::ofstream pcap_out(ss.str(), std::ios::binary);
       pcap_out.write(any2char<pcap_hdr_t*>(&_fileh), sizeof(_fileh));
 
