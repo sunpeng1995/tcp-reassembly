@@ -7,6 +7,8 @@ int ReSession::analyze_pcap_file(std::string path, std::string out_path) {
   out.open(path + ".txt");
   pcap_hdr_t fileh;
   in.read(any2char<pcap_hdr_t*>(&fileh), sizeof(fileh));
+
+  // check the file format
   if (fileh.magic_number != pcapfile_magic_number) {
 #ifdef RESULT_PRINT
     std::cout << "not a pcap file" << std::endl;
@@ -16,10 +18,12 @@ int ReSession::analyze_pcap_file(std::string path, std::string out_path) {
   _fileh = fileh;
   _path_prefix = out_path;
 
+  // analyze the packet layer by layer
   while (!in.eof()) {
     analyze_pcaprec();
   }
 
+  // reassemble segment
   reassemble_seg();
 
   in.close();
@@ -52,6 +56,8 @@ void ReSession::analyze_ether_pac(pack_struct& ph) {
   std::cout << "type:" << std::hex << std::setw(2) << std::setfill('0') << +etherh.type[0];
   std::cout << std::hex << std::setw(2) << std::setfill('0') << +etherh.type[1] << std::endl;
 #endif // DEBUG
+
+  // if packet is not ip packet, throw it
   if (etherh.type[0] != 0x08 || etherh.type[1] != 0) {
     return;
   }
@@ -63,6 +69,7 @@ void ReSession::analyze_ip_pac(pack_struct& ph) {
   ip_hdr_t iph;
   in.read(any2char<ip_hdr_t*>(&iph), sizeof(iph));
 
+  // if packet is not tcp packet, throw it
   if (iph.protocol != 0x06) { // TCP protocol number
     return;
   }
@@ -82,6 +89,7 @@ void ReSession::analyze_ip_pac(pack_struct& ph) {
 
   swap16(any2char<uint16_t*>(&iph.tot_len));
 
+  // record tcp payload data length
   uint64_t data_len = iph.tot_len - ip_header_len - tcp_header_len;
   ph.offset_beg = in.tellg();
   ph.data_len = data_len;
@@ -124,19 +132,25 @@ void ReSession::analyze_tcp_pac(pack_struct& ph, int& tcp_header_len) {
   if (r) {
     in.seekg(in.tellg() + static_cast<std::streampos>(r * 4));
   }
+
+  // convert network digital pattern to integer
   swap16(any2char<uint16_t*>(&tcph.dest_port));
   swap16(any2char<uint16_t*>(&tcph.src_port));
   swap32(any2char<uint32_t*>(&tcph.seq_num));
   swap32(any2char<uint32_t*>(&tcph.ack_num));
+
   ph.port_dest = tcph.dest_port;
   ph.port_src = tcph.src_port;
   ph.seq_num = tcph.seq_num;
   ph.ack_num = tcph.ack_num;
+
+  // record PSH flag, will be used in reassembling
   ph.psh_flag = tcph.flags & 0b00001000;
 
   tcp_header_len = (5 + r) * 4;
 }
 
+// use seq_num and ack_num to order the tcp packet
 void ReSession::add_to_bucket(pack_struct& ph) {
   if (tcp_bucket.find(ph.hash_code) == tcp_bucket.end()) {
     tcp_bucket[ph.hash_code] = std::vector<pack_struct>();
@@ -201,6 +215,7 @@ void ReSession::reassemble_seg() {
       bool start = false;
       char http_h[4], data[2048];
       for (auto v : it.second) {
+        // find a http request, start from there
         if (!start) {
           in.seekg(v.offset_beg);
           in.read(http_h, 3);
