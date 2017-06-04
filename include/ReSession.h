@@ -3,6 +3,7 @@
 #include <iomanip>
 #include <unordered_map>
 #include <vector>
+#include <cstring>
 
 typedef struct pcap_hdr_s {
   uint32_t magic_number;   /* magic number */
@@ -78,6 +79,17 @@ class ReSession {
 public:
 
   void analyze_pcap_file(std::string path);
+
+private:
+  std::ifstream in;
+  std::ofstream out;
+
+  const uint32_t pcapfile_magic_number = 0xa1b2c3d4;
+  const char http_methods[8][4] = { "GET", "HEA", "POS", "PUT", "DEL", "CON", "OPT", "TRA" };
+
+  std::unordered_map<uint64_t, std::vector<pack_struct>> tcp_bucket;
+
+
   void analyze_pcaprec();
   void analyze_ether_pac();
   void analyze_ip_pac();
@@ -85,15 +97,8 @@ public:
   void add_to_bucket(pack_struct& ph);
   void reassemble_seg();
   void print_pentuple(pack_struct& ph);
-  void print_segdata(pack_struct& ph);
 
-private:
-  std::ifstream in;
 
-  const uint32_t pcapfile_magic_number = 0xa1b2c3d4;
-  const char http_methods[8][4] = { "GET", "HEA", "POS", "PUT", "DEL", "CON", "OPT", "TRA" };
-
-  std::unordered_map<uint64_t, std::vector<pack_struct>> tcp_bucket;
 
   template<typename T>
   inline char* any2char(T t) {

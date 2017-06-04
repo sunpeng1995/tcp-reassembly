@@ -1,31 +1,27 @@
 #include "ReSession.h"
 //#define DEBUG
-#define RESULT
+#define RESULT_PRINT
 
 void ReSession::analyze_pcap_file(std::string path) {
   in.open(path, std::ios::binary);
+  out.open(path + ".txt");
   pcap_hdr_t fileh;
   in.read(any2char<pcap_hdr_t*>(&fileh), sizeof(fileh));
   if (fileh.magic_number != pcapfile_magic_number) {
-#ifdef DEBUG
+#ifdef RESULT_PRINT
     std::cout << "not a pcap file" << std::endl;
-#endif // DEBUG
+#endif // RESULT_PRINT
     return;
   }
 
   while (!in.eof()) {
     analyze_pcaprec();
   }
-  //analyze_pcaprec();
-  //analyze_pcaprec();
-  //analyze_pcaprec();
-  //analyze_pcaprec();
-  //analyze_pcaprec();
-  //analyze_pcaprec();
-  //analyze_pcaprec();
-  //analyze_pcaprec();
 
   reassemble_seg();
+
+  in.close();
+  out.close();
 }
 
 void ReSession::analyze_pcaprec() {
@@ -38,10 +34,8 @@ void ReSession::analyze_pcaprec() {
 
   analyze_ether_pac();
 
-
-
+  // Seek to next pcaprec
   in.seekg(next);
-  
 }
 
 void ReSession::analyze_ether_pac() {
@@ -190,14 +184,16 @@ void ReSession::reassemble_seg() {
           in.seekg(v.offset_beg);
           int a = in.tellg();
           in.read(data, v.data_len);
-#ifdef RESULT
           data[v.data_len] = 0;
+#ifdef RESULT_PRINT
           std::cout << data;
-#endif // RESULT
+#endif // RESULT_PRINT
+          out << data;
           if (v.psh_flag) {
-#ifdef RESULT
+#ifdef RESULT_PRINT
             std::cout << std::endl << std::endl;
-#endif // RESULT
+#endif // RESULT_PRINT
+            out << std::endl << std::endl;
           }
         }
       }
@@ -206,8 +202,8 @@ void ReSession::reassemble_seg() {
 }
 
 void ReSession::print_pentuple(pack_struct& ph) {
-#ifdef RESULT
-  std::cout << "TCP ";
+#ifdef RESULT_PRINT
+  std::cout << std::endl << std::endl << "TCP ";
   std::cout << std::dec << "ip1:" 
     << (ph.ip_dest & 0x000000ff) << "."
     << (ph.ip_dest>>8 & 0x000000ff) << "."
@@ -219,14 +215,20 @@ void ReSession::print_pentuple(pack_struct& ph) {
     << (ph.ip_src>>8 & 0x000000ff) << "."
     << (ph.ip_src>>16 & 0x000000ff) << "."
     << (ph.ip_src>>24 & 0x000000ff) << " ";
-  std::cout << "port2:" << ph.port_src << std::endl;
-#endif // RESULT
+  std::cout << "port2:" << ph.port_src << std::endl << std::endl;
+#endif // RESULT_PRINT
 
-}
-
-void ReSession::print_segdata(pack_struct& ph) {
-#ifdef RESULT
-
-#endif // RESULT
-
+  out << std::endl << std::endl << "TCP ";
+  out << std::dec << "ip1:" 
+    << (ph.ip_dest & 0x000000ff) << "."
+    << (ph.ip_dest>>8 & 0x000000ff) << "."
+    << (ph.ip_dest>>16 & 0x000000ff) << "."
+    << (ph.ip_dest>>24 & 0x000000ff) << " ";
+  out << "port1:" << ph.port_dest << " ";
+  out << std::dec << "ip2:" 
+    << (ph.ip_src & 0x000000ff) << "."
+    << (ph.ip_src>>8 & 0x000000ff) << "."
+    << (ph.ip_src>>16 & 0x000000ff) << "."
+    << (ph.ip_src>>24 & 0x000000ff) << " ";
+  out << "port2:" << ph.port_src << std::endl << std::endl;
 }

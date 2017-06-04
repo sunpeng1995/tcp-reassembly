@@ -7,6 +7,6 @@ set(CMAKE_CXX_FLAGS_DEBUG "$ENV{CXXFLAGS} -O0 -std=c++11 -g -ggdb")
 set(CMAKE_CXX_FLAGS_RELEASE "$ENV{CXXFLAGS} -O2 -std=c++11")
 
 include_directories(include)
-file(COPY test/ DESTINATION ./)
+file(COPY test/ DESTINATION ./test/)
 
 add_executable(resession src/main.cpp src/ReSession.cpp)
