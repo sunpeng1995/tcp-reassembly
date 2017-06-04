@@ -2,7 +2,7 @@
 //#define DEBUG
 //#define RESULT_PRINT
 
-void ReSession::analyze_pcap_file(std::string path, std::string out_path) {
+int ReSession::analyze_pcap_file(std::string path, std::string out_path) {
   in.open(path, std::ios::binary);
   out.open(path + ".txt");
   pcap_hdr_t fileh;
@@ -11,7 +11,7 @@ void ReSession::analyze_pcap_file(std::string path, std::string out_path) {
 #ifdef RESULT_PRINT
     std::cout << "not a pcap file" << std::endl;
 #endif // RESULT_PRINT
-    return;
+    return 1;
   }
   _fileh = fileh;
   _path_prefix = out_path;
@@ -24,6 +24,7 @@ void ReSession::analyze_pcap_file(std::string path, std::string out_path) {
 
   in.close();
   out.close();
+  return 0;
 }
 
 void ReSession::analyze_pcaprec() {
