@@ -1,11 +1,11 @@
-#include "ReSession.h"
+#include "mainwindow.h"
+#include <QApplication>
 
-int main() {
-  ReSession res;
+int main(int argc, char *argv[])
+{
+    QApplication a(argc, argv);
+    MainWindow w;
+    w.show();
 
-  // Result saves in test/test1.pcap.txt
-  res.analyze_pcap_file("test/test.pcap","test/pcap/");
-
-  system("pause");
-  return 0;
+    return a.exec();
 }
