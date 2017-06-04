@@ -1,6 +1,8 @@
 #include <iostream>
 #include <fstream>
 #include <iomanip>
+#include <unordered_map>
+#include <vector>
 
 typedef struct pcap_hdr_s {
   uint32_t magic_number;   /* magic number */
@@ -57,7 +59,10 @@ typedef struct {
   uint16_t port_dest;
   uint32_t seq_num;
   uint32_t ack_num;
+  uint32_t data_len;
   uint64_t time_stamp;
+  uint64_t hash_code;
+  bool psh_flag;
   std::streampos offset_beg;
   std::streampos offset_end;
 } pack_struct;
@@ -77,11 +82,18 @@ public:
   void analyze_ether_pac();
   void analyze_ip_pac();
   void analyze_tcp_pac(pack_struct& ph, int& tcp_header_len);
+  void add_to_bucket(pack_struct& ph);
+  void reassemble_seg();
+  void print_pentuple(pack_struct& ph);
+  void print_segdata(pack_struct& ph);
 
 private:
   std::ifstream in;
 
   const uint32_t pcapfile_magic_number = 0xa1b2c3d4;
+  const char http_methods[8][4] = { "GET", "HEA", "POS", "PUT", "DEL", "CON", "OPT", "TRA" };
+
+  std::unordered_map<uint64_t, std::vector<pack_struct>> tcp_bucket;
 
   template<typename T>
   inline char* any2char(T t) {
@@ -97,5 +109,35 @@ private:
     uint8_t t0 = in[0], t1 = in[1];
     in[0] = in[3], in[1] = in[2];
     in[3] = t0, in[2] = t1;
+  }
+
+  inline void hash_packet(pack_struct& ph) {
+    uint64_t hash = 17;
+    if (ph.ip_src < ph.ip_dest) {
+      hash = hash * 31 + ph.ip_src;
+      hash = hash * 31 + ph.ip_dest;
+    }
+    else {
+      hash = hash * 31 + ph.ip_dest;
+      hash = hash * 31 + ph.ip_src;
+    }
+    if (ph.port_src < ph.port_dest) {
+      hash = hash * 31 + ph.port_src;
+      hash = hash * 31 + ph.port_dest;
+    }
+    else {
+      hash = hash * 31 + ph.port_dest;
+      hash = hash * 31 + ph.port_src;
+    }
+    ph.hash_code = hash;
+  }
+
+  inline bool check_http_h(char* h) {
+    for (int i = 0; i < 8; i++) {
+      if (strcmp(h, http_methods[i])) {
+        return true;
+      }
+    }
+    return false;
   }
 };
