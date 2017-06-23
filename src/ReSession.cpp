@@ -42,6 +42,7 @@ void ReSession::analyze_pcaprec() {
   pack_struct ph;
   ph.pcap_offset_beg = in.tellg() - static_cast<std::streampos>(sizeof(pcaprec));
   ph.pcap_len = pcaprec.incl_len + sizeof(pcaprec);
+  ph.time_stamp = pcaprec.ts_usec;
 
   analyze_ether_pac(ph);
 
@@ -70,7 +71,7 @@ void ReSession::analyze_ip_pac(pack_struct& ph) {
   in.read(any2char<ip_hdr_t*>(&iph), sizeof(iph));
 
   // if packet is not tcp packet, throw it
-  if (iph.protocol != 0x06) { // TCP protocol number
+  if (iph.protocol != 0x06 && iph.protocol != 0x11) { // TCP protocol number
     return;
   }
 
@@ -83,14 +84,21 @@ void ReSession::analyze_ip_pac(pack_struct& ph) {
   ph.ip_src = iph.src_ip;
 
   int ip_header_len = (5 + r) * 4;
-  int tcp_header_len;
+  int inner_header_len;
 
-  analyze_tcp_pac(ph, tcp_header_len);
+  if (iph.protocol == 0x06) {
+    analyze_tcp_pac(ph, inner_header_len);
+  }
+  else {
+    analyze_udp_pac(ph);
+    // upd header size always is 8 bytes
+    inner_header_len = 8;
+  }
 
   swap16(any2char<uint16_t*>(&iph.tot_len));
 
   // record tcp payload data length
-  uint64_t data_len = iph.tot_len - ip_header_len - tcp_header_len;
+  uint64_t data_len = iph.tot_len - ip_header_len - inner_header_len;
   ph.offset_beg = in.tellg();
   ph.data_len = data_len;
 
@@ -113,7 +121,6 @@ void ReSession::analyze_ip_pac(pack_struct& ph) {
     << (ph.ip_src>>24 & 0x000000ff) << std::endl;
   std::cout << "port_src :" << ph.port_src << std::endl;
   std::cout << "offset_beg:" << ph.offset_beg << std::endl;
-  std::cout << "offset_end:" << ph.offset_end << std::endl;
   std::cout << std::hex << "seq_num:" << ph.seq_num << std::endl;
   std::cout << "ack_num:" << ph.ack_num << std::endl;
   std::cout << "data_len:" << ph.data_len << std::endl;
@@ -127,6 +134,8 @@ void ReSession::analyze_ip_pac(pack_struct& ph) {
 void ReSession::analyze_tcp_pac(pack_struct& ph, int& tcp_header_len) {
   tcp_hdr_t tcph;
   in.read(any2char<tcp_hdr_t*>(&tcph), sizeof(tcph));
+
+  ph.protocol = 6;
 
   int r = (tcph.offset>>4 & 0xf) - 5;
   if (r) {
@@ -144,10 +153,24 @@ void ReSession::analyze_tcp_pac(pack_struct& ph, int& tcp_header_len) {
   ph.seq_num = tcph.seq_num;
   ph.ack_num = tcph.ack_num;
 
-  // record PSH flag, will be used in reassembling
+  // record PSH & SYN flag, will be used in reassembling
   ph.psh_flag = tcph.flags & 0b00001000;
+  ph.syn_flag = tcph.flags & 0b00000010;
 
   tcp_header_len = (5 + r) * 4;
+}
+
+void ReSession::analyze_udp_pac(pack_struct& ph) {
+  udp_hdr_t udph;
+  in.read(any2char<udp_hdr_t*>(&udph), sizeof(udph));
+
+  ph.protocol = 17;
+
+  swap16(any2char<uint16_t*>(&udph.src_port));
+  swap16(any2char<uint16_t*>(&udph.dest_port));
+
+  ph.port_src = udph.src_port;
+  ph.port_dest = udph.dest_port;
 }
 
 // use seq_num and ack_num to order the tcp packet
@@ -158,6 +181,7 @@ void ReSession::add_to_bucket(pack_struct& ph) {
   std::vector<pack_struct> *v = &tcp_bucket[ph.hash_code];
   if (v->empty()) {
     v->push_back(ph);
+    return;
   }
   if (v->back().ip_dest == ph.ip_dest) {
     // The packet behind the last packet in vector
@@ -177,7 +201,12 @@ void ReSession::add_to_bucket(pack_struct& ph) {
     }
   }
   else {
-    if (v->back().ack_num == ph.seq_num) {
+    if (v->back().syn_flag && ph.syn_flag) {
+      v->push_back(ph);
+      return;
+    }
+    if (v->back().ack_num == ph.seq_num || 
+      v->back().seq_num == ph.ack_num) {
       v->push_back(ph);
     }
     // Else throw the packet
@@ -186,22 +215,24 @@ void ReSession::add_to_bucket(pack_struct& ph) {
 
 void ReSession::reassemble_seg() {
   for (auto it : tcp_bucket) {
-    if (!it.second.empty() &&
-      (it.second[0].port_dest == 80 || it.second[0].port_src == 80)) {
+    if (!it.second.empty()) {
       in.clear();
 
-      print_pentuple(it.second[0]);
+      if (it.second[0].port_dest == 80 || it.second[0].port_src == 80) {
+        print_pentuple(it.second[0]);
+      }
 
       std::stringstream ss;
       ss << _path_prefix;
+      std::string protocol = it.second[0].protocol == 0x06 ? "TCP" : "UDP";
       if (it.second[0].ip_dest < it.second[0].ip_src) {
-        ss << "TCP[" << ip2str(it.second[0].ip_dest) << "]["
+        ss << protocol << "[" << ip2str(it.second[0].ip_dest) << "]["
           << it.second[0].port_dest << "]["
           << ip2str(it.second[0].ip_src) << "]["
           << it.second[0].port_src << "].pcap";
       }
       else {
-        ss << "TCP[" << ip2str(it.second[0].ip_src) << "]["
+        ss << protocol << "[" << ip2str(it.second[0].ip_src) << "]["
           << it.second[0].port_src << "]["
           << ip2str(it.second[0].ip_dest) << "]["
           << it.second[0].port_dest << "].pcap";
@@ -231,13 +262,15 @@ void ReSession::reassemble_seg() {
           data[v.data_len] = 0;
           std::cout << data;
 #endif // RESULT_PRINT
-          out.write(data + (v.offset_beg - v.pcap_offset_beg), v.data_len);
           pcap_out.write(data, v.pcap_len);
-          if (v.psh_flag) {
+          if (it.second[0].port_dest == 80 || it.second[0].port_src == 80) {
+            out.write(data + (v.offset_beg - v.pcap_offset_beg), v.data_len);
+            if (v.psh_flag) {
 #ifdef RESULT_PRINT
-            std::cout << std::endl << std::endl;
+              std::cout << std::endl << std::endl;
 #endif // RESULT_PRINT
-            out << std::endl;
+              out << std::endl;
+            }
           }
         }
       }

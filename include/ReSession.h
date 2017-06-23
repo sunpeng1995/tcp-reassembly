@@ -54,7 +54,15 @@ typedef struct tcp_hdr_s {
   uint32_t sum_pointer;
 } tcp_hdr_t;
 
+typedef struct udp_hdr_s {
+  uint16_t src_port;
+  uint16_t dest_port;
+  uint16_t len;
+  uint16_t checksum;
+} udp_hdr_t;
+
 typedef struct {
+  uint16_t protocol; // tcp=6, udp=17
   uint32_t ip_src;
   uint32_t ip_dest;
   uint16_t port_src;
@@ -65,17 +73,11 @@ typedef struct {
   uint64_t time_stamp;
   uint64_t hash_code;
   bool psh_flag;
+  bool syn_flag;
   std::streampos offset_beg;
   std::streampos pcap_offset_beg;
   uint32_t pcap_len;
 } pack_struct;
-
-typedef struct {
-  uint8_t a;
-  uint8_t b;
-  uint8_t c;
-  uint8_t d;
-} ip_struct;
 
 class ReSession {
 public:
@@ -106,6 +108,7 @@ private:
   void analyze_ether_pac(pack_struct& ph);
   void analyze_ip_pac(pack_struct& ph);
   void analyze_tcp_pac(pack_struct& ph, int& tcp_header_len);
+  void analyze_udp_pac(pack_struct& ph);
   void add_to_bucket(pack_struct& ph);
   void reassemble_seg();
   void print_pentuple(pack_struct& ph);
@@ -145,7 +148,7 @@ private:
       hash = hash * 31 + ph.port_dest;
       hash = hash * 31 + ph.port_src;
     }
-    ph.hash_code = hash;
+    ph.hash_code = hash * 31 + ph.protocol;
   }
 
   inline bool check_http_h(char* h) {
