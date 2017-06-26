@@ -10,3 +10,4 @@ include_directories(include)
 file(COPY test/ DESTINATION ./test/)
 
 add_executable(resession src/main.cpp src/ReSession.cpp)
+add_library(res SHARED src/ReSession.cpp src/toPython.cpp)

@@ -92,6 +92,8 @@ public:
 private:
   std::ifstream in;
   std::ofstream out;
+  std::ofstream hex_out;
+
   std::string _path_prefix;
   
   std::stringstream _sub_pcap_files;
@@ -111,7 +113,7 @@ private:
   void analyze_udp_pac(pack_struct& ph);
   void add_to_bucket(pack_struct& ph);
   void reassemble_seg();
-  void print_pentuple(pack_struct& ph);
+  void print_pentuple(pack_struct& ph, std::ofstream& o);
 
 
   template<typename T>
@@ -153,7 +155,7 @@ private:
 
   inline bool check_http_h(char* h) {
     for (int i = 0; i < 8; i++) {
-      if (strcmp(h, http_methods[i])) {
+      if (strcmp(h, http_methods[i]) == 0) {
         return true;
       }
     }

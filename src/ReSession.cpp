@@ -4,7 +4,19 @@
 
 int ReSession::analyze_pcap_file(std::string path, std::string out_path) {
   in.open(path, std::ios::binary);
-  out.open(path + ".txt");
+  if (out_path[out_path.size() - 1] != '/') {
+    out_path.push_back('/');
+  }
+  out.open(out_path + "result.txt");
+  hex_out.open(out_path + "result_hex.txt");
+
+  if (!in.is_open()) {
+    return 2;
+  }
+  if (!out.is_open()) {
+    // directory not exists
+    return 2;
+  }
   pcap_hdr_t fileh;
   in.read(any2char<pcap_hdr_t*>(&fileh), sizeof(fileh));
 
@@ -219,7 +231,8 @@ void ReSession::reassemble_seg() {
       in.clear();
 
       if (it.second[0].port_dest == 80 || it.second[0].port_src == 80) {
-        print_pentuple(it.second[0]);
+        print_pentuple(it.second[0], out);
+        print_pentuple(it.second[0], hex_out);
       }
 
       std::stringstream ss;
@@ -243,17 +256,18 @@ void ReSession::reassemble_seg() {
       std::ofstream pcap_out(ss.str(), std::ios::binary);
       pcap_out.write(any2char<pcap_hdr_t*>(&_fileh), sizeof(_fileh));
 
-      bool start = false;
+      std::stringstream ss_hex;
+      bool start = true;
       char http_h[4], data[2048];
       for (auto v : it.second) {
         // find a http request, start from there
-        if (!start) {
+        if (start) {
           in.seekg(v.offset_beg);
           in.read(http_h, 3);
           http_h[3] = 0;
           start = check_http_h(http_h);
         }
-        if (start) {
+        if (!start) {
           //in.seekg(v.offset_beg);
           in.seekg(v.pcap_offset_beg);
           //in.read(data, v.data_len);
@@ -265,11 +279,31 @@ void ReSession::reassemble_seg() {
           pcap_out.write(data, v.pcap_len);
           if (it.second[0].port_dest == 80 || it.second[0].port_src == 80) {
             out.write(data + (v.offset_beg - v.pcap_offset_beg), v.data_len);
+
+            if (v.data_len != 0) {
+              char* p = data + (v.offset_beg - v.pcap_offset_beg);
+              char request_head[4] = { p[0], p[1], p[2], 0 };
+              char response_head[6] = { p[0], p[1], p[2], p[3], 0 };
+              if (check_http_h(request_head)) {
+                ss_hex << request_head << std::endl;
+              }
+              else if (strcmp(response_head, "HTTP") == 0) {
+                ss_hex << std::endl << response_head << std::endl;
+              }
+              for (int i = 0; i < v.data_len; i++) {
+                ss_hex << std::hex << std::setfill('0') << std::setw(2) << +p[i];
+              }
+            }
+
             if (v.psh_flag) {
 #ifdef RESULT_PRINT
               std::cout << std::endl << std::endl;
 #endif // RESULT_PRINT
               out << std::endl;
+              hex_out.write(ss_hex.str().c_str(), ss_hex.str().size());
+              hex_out << std::endl;
+              ss_hex.clear();
+              ss_hex.str("");
             }
           }
         }
@@ -279,7 +313,7 @@ void ReSession::reassemble_seg() {
   }
 }
 
-void ReSession::print_pentuple(pack_struct& ph) {
+void ReSession::print_pentuple(pack_struct& ph, std::ofstream& o) {
 #ifdef RESULT_PRINT
   std::cout << std::endl << std::endl << "TCP ";
   std::cout << std::dec << "ip1:" 
@@ -296,9 +330,9 @@ void ReSession::print_pentuple(pack_struct& ph) {
   std::cout << "port2:" << ph.port_src << std::endl << std::endl;
 #endif // RESULT_PRINT
 
-  out << std::endl << std::endl << "TCP ";
-  out << std::dec << "ip1:" << ip2str(ph.ip_dest) << " ";
-  out << "port1:" << ph.port_dest << " ";
-  out << std::dec << "ip2:" << ip2str(ph.ip_src) << " ";
-  out << "port2:" << ph.port_src << std::endl << std::endl;
+  o << std::endl << std::endl << "TCP ";
+  o << std::dec << "ip1:" << ip2str(ph.ip_dest) << " ";
+  o << "port1:" << ph.port_dest << " ";
+  o << std::dec << "ip2:" << ip2str(ph.ip_src) << " ";
+  o << "port2:" << ph.port_src << std::endl << std::endl;
 }
